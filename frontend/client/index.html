@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="cloudShareApp">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CloudShare</title>
+  <link rel="stylesheet" href="styles.css" />
+
+  <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.3/angular.min.js"></script>
+</head>
+
+<body ng-controller="MainController">
+  <div class="app-container">
+    <header class="top-bar">
+      <div class="brand">
+        <div class="logo">CloudShare</div>
+        <div class="tagline">Serverless Multimedia Sharing</div>
+      </div>
+
+      <div class="search-box" ng-if="currentView === 'feed'">
+        <input type="text" placeholder="Search by caption or tag..." ng-model="searchQuery" />
+      </div>
+
+      <div class="account">
+        <span class="chip">Guest</span>
+      </div>
+    </header>
+
+    <div class="main-content">
+      <aside class="sidebar">
+        <button class="nav-btn" ng-class="{active: currentView==='feed'}" ng-click="navigateTo('feed')">Feed</button>
+        <button class="nav-btn" ng-class="{active: currentView==='upload'}" ng-click="navigateTo('upload')">Upload</button>
+        <button class="nav-btn" ng-class="{active: currentView==='profile'}" ng-click="navigateTo('profile')">My Profile</button>
+        <button class="nav-btn" ng-class="{active: currentView==='settings'}" ng-click="navigateTo('settings')">Settings</button>
+      </aside>
+
+      <section class="content">
+        <!-- FEED VIEW -->
+        <div ng-if="currentView === 'feed'">
+          <div class="section-title">
+            <h2>Feed</h2>
+            <button class="ghost-btn" ng-click="loadPosts()">Refresh</button>
+          </div>
+
+          <div class="empty" ng-if="!posts || posts.length === 0">
+            No posts found. Upload something.
+          </div>
+
+          <div class="post-card" ng-repeat="post in filteredPosts() track by (post.id || post._id || $index)">
+            <div class="post-header">
+              <div class="avatar">{{(post.ownerName || 'U').charAt(0)}}</div>
+              <div class="meta">
+                <div class="user">{{post.ownerName || 'User'}}</div>
+                <div class="time">{{post.createdAt | date:'medium'}}</div>
+              </div>
+            </div>
+
+            <div class="media">
+              <img ng-if="post.mediaType==='image'" ng-src="{{post.blobUrl}}" alt="post image" />
+
+              <video ng-if="post.mediaType==='video'" controls>
+                <source ng-src="{{trust(post.blobUrl)}}" />
+              </video>
+
+              <audio ng-if="post.mediaType==='audio'" controls>
+                <source ng-src="{{trust(post.blobUrl)}}" />
+              </audio>
+
+              <div class="media-fallback" ng-if="post.mediaType!=='image' && post.mediaType!=='video' && post.mediaType!=='audio'">
+                <a ng-href="{{post.blobUrl}}" target="_blank" rel="noreferrer">Open media</a>
+              </div>
+            </div>
+
+            <div class="post-body">
+              <div class="caption">{{post.caption}}</div>
+
+              <div class="tags" ng-if="post.tags && post.tags.length > 0">
+                <span class="tag" ng-repeat="t in post.tags track by $index">#{{t}}</span>
+              </div>
+
+              <div class="actions">
+                <button class="ghost-btn" ng-click="viewPost(post)">View</button>
+                <button class="ghost-btn" ng-click="openEditPost(post)">Edit</button>
+                <button class="danger-btn" ng-click="confirmDeletePost(post)">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- UPLOAD VIEW -->
+        <div ng-if="currentView === 'upload'">
+          <div class="section-title">
+            <h2>Upload</h2>
+          </div>
+
+          <div class="panel">
+            <div class="form-row">
+              <label>Select File</label>
+              <input type="file" id="fileInput" onchange="angular.element(this).scope().onFileSelected(this.files)" />
+            </div>
+
+            <div class="form-row">
+              <label>Caption</label>
+              <input type="text" placeholder="Write a caption..." ng-model="uploadData.caption" />
+            </div>
+
+            <div class="form-row">
+              <label>Tags (comma separated)</label>
+              <input type="text" placeholder="e.g. travel, sunset, food" ng-model="uploadData.tags" />
+            </div>
+
+            <div class="form-row">
+              <button class="primary-btn" ng-click="handleUpload()" ng-disabled="uploading">
+                {{uploading ? 'Uploading...' : 'Upload'}}
+              </button>
+            </div>
+
+            <div class="progress-wrap" ng-if="uploading">
+              <div class="progress-label">Upload progress: {{uploadProgress}}%</div>
+              <div class="progress-bar">
+                <div class="progress-fill" ng-style="{width: uploadProgress + '%'}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PROFILE VIEW -->
+        <div ng-if="currentView === 'profile'">
+          <div class="section-title">
+            <h2>My Profile</h2>
+          </div>
+          <div class="panel">Profile view placeholder for CW2 demo.</div>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div ng-if="currentView === 'settings'">
+          <div class="section-title">
+            <h2>Settings</h2>
+          </div>
+          <div class="panel">Settings placeholder for CW2 demo.</div>
+        </div>
+      </section>
+
+      <!-- TRENDING SECTION - Only show in feed view and when there are trending tags -->
+      <aside class="trending" ng-if="currentView === 'feed'">
+        <h3>Trending</h3>
+        <div class="trend-item" ng-repeat="t in trendingTags track by $index">#{{t}}</div>
+        <div class="trend-item" ng-if="!trendingTags || trendingTags.length === 0">
+          No trending tags yet
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- VIEW MODAL -->
+  <div class="modal-backdrop" ng-if="showModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Post</h3>
+        <button class="ghost-btn" ng-click="closeModal()">Close</button>
+      </div>
+      <div class="modal-body" ng-if="currentPost">
+        <div><strong>Caption:</strong> {{currentPost.caption}}</div>
+        <div class="tags" ng-if="currentPost.tags && currentPost.tags.length > 0">
+          <span class="tag" ng-repeat="t in currentPost.tags track by $index">#{{t}}</span>
+        </div>
+        <div style="margin-top:12px;">
+          <a ng-href="{{currentPost.blobUrl}}" target="_blank" rel="noreferrer">Open media</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT MODAL -->
+  <div class="modal-backdrop" ng-if="showEditModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Edit Post</h3>
+        <button class="ghost-btn" ng-click="closeEditModal()">Close</button>
+      </div>
+      <div class="modal-body" ng-if="editPost">
+        <div class="form-row">
+          <label>Caption</label>
+          <input type="text" ng-model="editPost.caption" />
+        </div>
+        <div class="form-row">
+          <label>Tags (comma separated)</label>
+          <input type="text" ng-model="editTags" />
+        </div>
+        <div class="form-row">
+          <button class="primary-btn" ng-click="savePostEdits()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast" ng-if="toast.show" ng-class="toast.type">
+    {{toast.message}}
+  </div>
+
+  <!-- CONFIG: ensure these are set BEFORE app.js loads -->
+  <script>
+    window.BLOB_CONTAINER_URL = "https://stcloudshareb00953252.blob.core.windows.net/media";
+    window.CONTAINER_SAS = "?sv=2024-11-04&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2026-02-28T10:31:36Z&st=2026-01-07T02:16:36Z&spr=https&sig=1YTtZs04rUAQSZeLvLnSzZZ7q4Hz1rvygo7EK6lJ7IM%3D";
+    window.POSTS_GET_URL = "https://prod-30.francecentral.logic.azure.com:443/workflows/6c6c64f9b585422eaa84063dbf2518a8/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=zzf2aRvgw4YILPYlUsgntLpCj7zh-F1SaI0_ABEp7oQ";
+    window.POSTS_CREATE_URL = "https://prod-16.francecentral.logic.azure.com:443/workflows/36e853c256db472882fc411c834fc554/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=fQ92lvyTYdCm0Miz5smITEYMYomLUXfozJ_tDq6NdWM";
+    window.POSTS_DELETE_URL = "https://prod-11.francecentral.logic.azure.com:443/workflows/9da456d0ed7a4adfa84c6842002465cf/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=jma69tGrNfDEimhHgnhslFI8Zjawl9Uw-iQulVwyxgk";
+
+    // Optional. If blank, Edit will show a toast and do nothing (but won't crash).
+    window.POSTS_UPDATE_URL = "https://prod-25.francecentral.logic.azure.com:443/workflows/027c47f09a06457a91efdee7974b6f77/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=WtpMj3EpBXXJbnQ2Fmvotw_1J_t1u9PPD4h8EDO6UoI";
+  </script>
+
+  <!-- IMPORTANT: Add version number to force cache refresh -->
+  <script src="app.js?v=5"></script>
+</body>
+</html>
